@@ -1,0 +1,4 @@
+# Day 3
+In [Day 3](https://adventofcode.com/2020/day/3), we need to find the number of trees encountered by sliding down an infinitely wide grid with different slopes.  I parsed the input into a 2D vector of square enum values, and looped through the squares to find the number of trees.  `x % self.width` handles the infinite width since the grid pattern repeats.
+
+Part 2 asks for the product of several slopes.  I made the right and down steps arguments in part 1, so part 2 just involved looping through the slopes and calculating the product.  Rust's destructuring (`|(right, down)|` in `.map(|(right, down)| grid.count_trees(*right, *down))`) is really nice.
