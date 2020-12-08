@@ -46,15 +46,12 @@ impl Instruction {
             }
         };
 
-        if new_pc >= 0 && (new_pc as usize) < comp.instructions.len() {
-            comp.pc = new_pc as usize;
-            true
-        } else if new_pc >= 0 {
-            comp.pc = new_pc as usize;
-            false
-        } else {
-            false
+        if new_pc < 0 {
+            return false;
         }
+
+        comp.pc = new_pc as usize;
+        comp.pc < comp.instructions.len()
     }
 
     /// Returns the opposite of this instruction.  jmp becomes nop, nop becomes jmp,
