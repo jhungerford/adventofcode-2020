@@ -2,20 +2,15 @@ use std::collections::HashSet;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 
-#[derive(Debug, Hash, Eq, PartialEq)]
-pub struct Position {
-    x: i32,
-    y: i32,
-    z: i32,
-}
-
+#[derive(Debug)]
 pub struct Grid {
-    active: HashSet<Position>
+    dimensions: usize,
+    active: HashSet<Vec<i32>>,
 }
 
 impl Grid {
-    /// Loads a Grid from the given file.
-    pub fn load(filename: &str) -> Grid {
+    /// Loads a Grid with the given number of dimensions from a file.
+    pub fn load(filename: &str, dimensions: usize) -> Grid {
         let f = File::open(filename).unwrap();
         let f = BufReader::new(f);
 
@@ -24,12 +19,18 @@ impl Grid {
         for (y, line) in f.lines().enumerate() {
             for (x, c) in line.unwrap().chars().enumerate() {
                 if c == '#' {
-                    active.insert(Position { x: x as i32, y: y as i32, z: 0 });
+                    let mut point = vec![x as i32, y as i32];
+
+                    for _ in 2..dimensions {
+                        point.push(0);
+                    }
+
+                    active.insert(point);
                 }
             }
         }
 
-        Grid { active }
+        Grid { dimensions, active }
     }
 
     /// Runs this grid a given number of cycles, modifying it in the process.
@@ -43,36 +44,38 @@ impl Grid {
         // * If a cube is active and exactly 2 or 3 neighbors are active, the cube remains active.
         //   Otherwise it becomes inactive.
         // * If a cube is inactive but exactly 3 of its neighbors are active, the cube becomes active.
+        let mut to_check: Vec<Vec<i32>> = Vec::new();
+        for i in 0..self.dimensions {
+            let min = self.active.iter().map(|a| a[i]).min().unwrap() - 1;
+            let max = self.active.iter().map(|a| a[i]).max().unwrap() + 1;
 
-        let min_position = self.active.iter().fold(
-            Position { x: 0, y: 0, z: 0 }, |min, p| Position {
-                x: min.x.min(p.x),
-                y: min.y.min(p.y),
-                z: min.z.min(p.z),
-            });
+            let mut new_to_check= Vec::new();
 
-        let max_position = self.active.iter().fold(
-            Position { x: 0, y: 0, z: 0 }, |max, p| Position {
-                x: max.x.max(p.x),
-                y: max.y.max(p.y),
-                z: max.z.max(p.z),
-            });
-
-        let mut new_active = HashSet::new();
-        for z in min_position.z - 1 ..= max_position.z + 1 {
-            for y in min_position.y - 1 ..= max_position.y + 1 {
-                for x in min_position.x - 1 ..= max_position.x + 1 {
-                    let pos = Position { x, y, z };
-                    let active = self.active.contains(&pos);
-
-                    let neighbors = self.active_neighbors(&pos);
-
-                    if active && (neighbors == 2 || neighbors == 3) {
-                        new_active.insert(pos);
-                    } else if !active && neighbors == 3 {
-                        new_active.insert(pos);
+            for j in min ..= max {
+                if to_check.is_empty() {
+                    new_to_check.push(vec![j]);
+                } else {
+                    for partial_pos in &to_check {
+                        let mut pos = partial_pos.clone();
+                        pos.push(j);
+                        new_to_check.push(pos);
                     }
                 }
+            }
+
+            to_check = new_to_check;
+        }
+
+        let mut new_active = HashSet::new();
+
+        for pos in to_check {
+            let active = self.active.contains(&pos);
+            let neighbors = self.neighbors(&pos);
+
+            if active && (neighbors == 2 || neighbors == 3) {
+                new_active.insert(pos);
+            } else if !active && neighbors == 3 {
+                new_active.insert(pos);
             }
         }
 
@@ -80,26 +83,29 @@ impl Grid {
     }
 
     /// Returns the number of active neighbors around the given position.
-    fn active_neighbors(&self, p: &Position) -> usize {
-        let mut num = 0;
+    fn neighbors(&self, pos: &Vec<i32>) -> usize {
+        let mut neighbors: Vec<Vec<i32>> = Vec::new();
+        for i in 0..self.dimensions {
+            let mut new_neighbors = Vec::new();
 
-        for z in -1 ..= 1 {
-            for y in -1 ..= 1 {
-                for x in -1 ..= 1 {
-                    let n_pos = Position {
-                        x: p.x + x,
-                        y: p.y + y,
-                        z: p.z + z,
-                    };
-
-                    if (x != 0 || y != 0 || z != 0) && self.active.contains(&n_pos) {
-                        num += 1;
+            for j in -1 ..= 1 {
+                if neighbors.is_empty() {
+                    new_neighbors.push(vec![pos[i] + j])
+                } else {
+                    for partial_neighbor in &neighbors {
+                        let mut neighbor = partial_neighbor.clone();
+                        neighbor.push(pos[i] + j);
+                        new_neighbors.push(neighbor);
                     }
                 }
             }
+
+            neighbors = new_neighbors;
         }
 
-        num
+        neighbors.iter()
+            .filter(|&n| n != pos && self.active.contains(n))
+            .count()
     }
 
     /// Returns the number of active cubes in this grid.
@@ -114,16 +120,25 @@ mod grid_tests {
 
     #[test]
     fn load() {
-        let grid = Grid::load("sample.txt");
+        let grid = Grid::load("sample.txt", 3);
         assert_eq!(grid.active(), 5);
     }
 
     #[test]
     fn run_sample() {
-        let mut grid = Grid::load("sample.txt");
+        let mut grid = Grid::load("sample.txt", 3);
 
         grid.step_times(6);
 
         assert_eq!(112, grid.active());
+    }
+
+    #[test]
+    fn run_sample_4D() {
+        let mut grid = Grid::load("sample.txt", 4);
+
+        grid.step_times(6);
+
+        assert_eq!(848, grid.active());
     }
 }
