@@ -1,34 +1,53 @@
-use std::iter::once;
-
 #[derive(Debug, Eq, PartialEq)]
 pub struct Cups {
-    cups: Vec<i32>
+    /// curr is the current cup's number.
+    curr: usize,
+    /// next maps a cup at an index to the next cup (value).
+    next: Vec<usize>,
 }
 
 impl Cups {
     /// Converts the given number into a game of cups.
     pub fn from(num: i32) -> Self {
-        Cups { cups: Cups::code_cups(num) }
+        Cups::new(Cups::code_cups(num))
     }
 
     /// Converts the given number into a game of million cups.  The cups will start with the
     /// number's digits in order, then continue with cups numbered up until 1,000,000.
     pub fn million_from(num: i32) -> Self {
+        // Cups is an ordered list of cups - fill in the remaining cups up to a million.
         let mut cups = Cups::code_cups(num);
 
-        for cup in cups.len() + 1 .. 1_000_000 {
-            cups.push(cup as i32);
+        for cup in cups.len() + 1 ..= 1_000_000 {
+            cups.push(cup);
         }
 
-        Cups { cups }
+        Cups::new(cups)
     }
 
-    fn code_cups(num: i32) -> Vec<i32> {
+    /// Returns a game of cups based off of the given cups, in order.
+    fn new(cups: Vec<usize>) -> Self {
+        // Game starts with the first cup.
+        let curr = cups[0];
+
+        // Next maps a cup (at an index) to the next cup (value)
+        let max_cup = *cups.iter().max().unwrap();
+        let mut next = vec![0; max_cup as usize + 1];
+        for i in 0..cups.len() - 1 {
+            next[cups[i]] = cups[i + 1];
+        }
+        next[cups[cups.len() - 1]] = cups[0];
+
+        Cups { curr, next }
+    }
+
+    /// code_cups splits the given number into a list of cups, in order.
+    fn code_cups(num: i32) -> Vec<usize> {
         let mut cups = Vec::new();
 
         let mut remaining_num = num;
         while remaining_num > 0 {
-            cups.push(remaining_num % 10);
+            cups.push(remaining_num as usize % 10);
             remaining_num /= 10;
         }
 
@@ -39,47 +58,40 @@ impl Cups {
 
     /// Shifts these cups once.
     pub fn shift(&mut self) -> &mut Self {
-        // Crab picks up 3 cups immediately clockwise of the current cup.
-        let num_cups = self.cups.len() as i32;
 
-        let cup = self.cups.remove(0);
-        let picked_up: Vec<i32> = self.cups.drain(0..3).collect();
+        // Crab picks up 3 cups immediately clockwise of the current cup.
+        let picked_up_1 = self.next[self.curr];
+        let picked_up_2 = self.next[picked_up_1];
+        let picked_up_3 = self.next[picked_up_2];
+
+        let after = self.next[picked_up_3];
 
         // Selects a destination cup: cup with label = current - 1.  If the label belongs
         // to a cup that was just picked up, keeps subtracting until it finds a valid cup.
         // Wraps around to the highest value if necessary.
-        let mut target = cup - 1;
+        let mut target = self.curr - 1;
         if target == 0 {
-            target = num_cups;
+            target = self.next.len() - 1;
         }
 
-        while picked_up.contains(&target) {
+        while target == picked_up_1 || target == picked_up_2 || target == picked_up_3 {
             target -= 1;
             if target == 0 {
-                target = num_cups;
+                target = self.next.len() - 1;
             }
         }
 
-
-        let maybe_target_index = self.cups.iter().position(|&cup| cup == target);
-        if maybe_target_index.is_none() {
-            println!("# Cups: {}, Cup: {}, picked_up: {:?}, target: {}", num_cups, cup, &picked_up, target);
-        }
-
-        let target_index = maybe_target_index.unwrap();
-
         // Places the picked up cups clockwise of the destination cup, preserving their order.
-        let new_cups = self.cups[0..=target_index].iter().cloned()
-            .chain(picked_up.iter().cloned())
-            .chain(self.cups[target_index+1..].iter().cloned())
-            .chain(once(cup))
-            .collect();
+        let old_target_next = self.next[target];
+        self.next[target] = picked_up_1;
+        self.next[picked_up_3] = old_target_next;
+        self.next[self.curr] = after;
 
         // println!("Cup: {}, picked_up: {:?}, new_cups: {:?}", cup, &picked_up, &new_cups);
 
-        self.cups = new_cups;
-
         // Selects a new cup immediately clockwise of the current cup (head of cups.)
+        self.curr = after;
+
         self
     }
 
@@ -94,45 +106,40 @@ impl Cups {
 
     /// Returns the code for these cups.
     pub fn code(&self) -> i32 {
-        let mut code = 0;
-        for cup in &self.cups {
+        assert!(self.next.len() <= 10, "Code is only valid for up to 9 cups.");
+
+        let mut code = self.curr;
+        let mut cup = self.next[self.curr];
+        while cup != self.curr {
             code *= 10;
             code += cup;
+            cup = self.next[cup];
         }
 
-        code
+        code as i32
     }
 
     /// Returns the code for the cups after the numbered cup.
-    pub fn code_after(&self, num: i32) -> i32 {
-        let num_index = self.cups.iter().position(|&cup| cup == num).unwrap();
+    pub fn code_after(&self, after_cup: usize) -> i32 {
+        assert!(self.next.len() <= 10, "code_after is only valid for up to 9 cups.");
 
         let mut code = 0;
-
-        if num_index < self.cups.len() - 1 {
-            for i in num_index + 1 .. self.cups.len() {
-                code *= 10;
-                code += self.cups[i];
-            }
+        let mut cup = self.next[after_cup];
+        while cup != after_cup {
+            code *= 10;
+            code += cup;
+            cup = self.next[cup];
         }
 
-        if num_index > 0 {
-            for i in 0..num_index {
-                code *= 10;
-                code += self.cups[i];
-            }
-        }
-
-        code
+        code as i32
     }
 
     /// Returns the product of the two numbers that occur after the given number.
-    pub fn product_after(&self, num: i32) -> i64 {
-        let num_index = self.cups.iter().position(|&cup| cup == num).unwrap();
-        let cup1 = self.cups[(num_index + 1) % self.cups.len()];
-        let cup2 = self.cups[(num_index + 2) % self.cups.len()];
+    pub fn product_after(&self, num: usize) -> i64 {
+        let num1 = self.next[num];
+        let num2 = self.next[num1];
 
-        cup1 as i64 * cup2 as i64
+        num1 as i64 * num2 as i64
     }
 }
 
@@ -142,7 +149,7 @@ mod tests {
 
     #[test]
     fn from_sample() {
-        assert_eq!(Cups { cups: vec![3, 2, 4, 1, 5] }, Cups::from(32415));
+        assert_eq!(Cups { curr: 3, next: vec![0, 5, 4, 2, 1, 3] }, Cups::from(32415));
     }
 
     #[test]
@@ -157,6 +164,12 @@ mod tests {
         assert_eq!(92658374, Cups::from(583741926).code_after(1));
         assert_eq!(58374926, Cups::from(583749261).code_after(1));
         assert_eq!(58374926, Cups::from(158374926).code_after(1));
+    }
+
+    #[test]
+    fn sample_product_after() {
+        assert_eq!(10, Cups::from(389125467).product_after(1));
+        assert_eq!(18, Cups::from(389125467).shift_times(10).product_after(1));
     }
 
     #[test]
@@ -179,6 +192,13 @@ mod tests {
     fn shift_times_sample() {
         let mut cups = Cups::from(389125467);
         assert_eq!(67384529, cups.shift_times(100).code_after(1));
+    }
+
+    #[test]
+    fn million_from_sample() {
+        let cups = Cups::million_from(389125467);
+        assert_eq!(1_000_001, cups.next.len()); // Zero is an empty cup - want 1M actual cups.
+        assert_eq!(3, cups.curr);
     }
 
     #[test]
