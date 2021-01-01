@@ -58,7 +58,6 @@ impl Cups {
 
     /// Shifts these cups once.
     pub fn shift(&mut self) -> &mut Self {
-
         // Crab picks up 3 cups immediately clockwise of the current cup.
         let picked_up_1 = self.next[self.curr];
         let picked_up_2 = self.next[picked_up_1];
@@ -86,8 +85,6 @@ impl Cups {
         self.next[target] = picked_up_1;
         self.next[picked_up_3] = old_target_next;
         self.next[self.curr] = after;
-
-        // println!("Cup: {}, picked_up: {:?}, new_cups: {:?}", cup, &picked_up, &new_cups);
 
         // Selects a new cup immediately clockwise of the current cup (head of cups.)
         self.curr = after;
