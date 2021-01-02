@@ -46,6 +46,11 @@ impl Puzzle {
         Puzzle { rules, messages }
     }
 
+    /// Returns the strings that match the given rule.
+    pub fn get_rule(&self, num: i32) -> Vec<String> {
+        self.rules.get(&num).unwrap().clone()
+    }
+
     /// Parses the given list of raw rules into a map of rule id to matching strings.
     fn parse_rules(rule_lines: Vec<String>) -> HashMap<i32, Vec<String>> {
         // raw_rules is a map of rule id to rule values.
@@ -186,11 +191,56 @@ impl Puzzle {
 
     /// Returns the number of messages that completely match the given rule.
     pub fn matches(&self, rule_num: i32) -> usize {
-        let rule = self.rules.get(&rule_num).unwrap();
-
         self.messages.iter()
-            .filter(|message| rule.contains(message))
+            .filter(|message| self.message_matches(message, rule_num))
             .count()
+    }
+
+    /// Returns whether the message matches the given rule.
+    fn message_matches(&self, message: &String, rule_num: i32) -> bool {
+        self.get_rule(rule_num).contains(message)
+    }
+
+    /// Returns the number of messages that completely match rule 0 recursively.
+    pub fn recursive_matches(&self) -> usize {
+        self.messages.iter()
+            .filter(|message| self.message_matches(message, 0) || self.message_matches_rule_0_recursively(message))
+            .count()
+    }
+
+    fn message_matches_rule_0_recursively(&self, message: &String) -> bool {
+        // In the recursive part, rules change to:
+        // 0: 8 11
+        // 8: 42 | 42 8
+        // 11: 42 31 | 42 11 31
+        // Looking at the question and sample data, 8 = 42, and 42 and 31 have either half of the
+        // possible combinations of their space.  42 and 31 have length 5 in the sample data,
+        // and they have length 8 in the question.
+        // To match, the input needs to be some number of chunks that match 42, followed by
+        // at least one fewer chunk that matches 31.
+
+        let chunk_size = self.get_rule(42)[0].len();
+        if message.len() % chunk_size != 0 {
+            return false;
+        }
+
+        let chunks: Vec<String> = message.as_bytes().chunks(chunk_size)
+            .map(|chunk| String::from_utf8(Vec::from(chunk)).unwrap())
+            .collect();
+
+        // Count the number of 42 chunks followed by the number of 31 chunks.
+        let num_42_chunks = chunks.iter()
+            .take_while(|chunk| self.message_matches(chunk, 42))
+            .count();
+
+        let num_31_chunks = chunks[num_42_chunks..].iter()
+            .take_while(|chunk| self.message_matches(chunk, 31))
+            .count();
+
+        num_42_chunks + num_31_chunks == chunks.len()
+            && num_42_chunks > 0
+            && num_31_chunks > 0
+            && num_31_chunks < num_42_chunks
     }
 }
 
@@ -211,5 +261,22 @@ mod tests {
         let puzzle = Puzzle::load("sample.txt");
 
         assert_eq!(2, puzzle.matches(0));
+    }
+
+    #[test]
+    fn recursive_matches_sample() {
+        let puzzle = Puzzle::load("recursive_sample.txt");
+
+        assert_eq!(12, puzzle.recursive_matches());
+    }
+
+    #[test]
+    fn recursive_matches_sample_messages() {
+        let puzzle = Puzzle::load("recursive_sample.txt");
+
+        assert!(puzzle.message_matches_rule_0_recursively(&"babbbbaabbbbbabbbbbbaabaaabaaa".to_owned()));
+        assert!(!puzzle.message_matches_rule_0_recursively(&"abbbbbabbbaaaababbaabbbbabababbbabbbbbbabaaaa".to_owned()));
+        assert!(!puzzle.message_matches_rule_0_recursively(&"aaaabbaaaabbaaa".to_owned()));
+        assert!(!puzzle.message_matches_rule_0_recursively(&"babaaabbbaaabaababbaabababaaab".to_owned()));
     }
 }
